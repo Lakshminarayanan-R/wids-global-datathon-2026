@@ -1,0 +1,15 @@
+[project]
+name = "wids-global-datathon-2026"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas",
+    "numpy",
+    "pydantic",
+    "scikit-learn",
+    "scikit-survival",
+    "loguru",
+    "numpy",
+]
