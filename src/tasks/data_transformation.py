@@ -9,10 +9,14 @@ features.
 NOTE: Preserve the order of the rows in the dataframe while performing transformations, since the order of the rows is important for the submission.
 '''
 
+from typing import Literal
+import json
+import os
 import pandas as pd
 import numpy as np
 from loguru import logger
 from argparse import ArgumentParser
+from pydantic import ValidationError
 
 ID_VARIABLE = 'event_id'
 RAW_TARGET = ['event', 'time_to_hit_hours']
@@ -99,7 +103,7 @@ def remove_high_noise_features(
 
 def removing_features_with_high_correlation(
         df: pd.DataFrame,
-        correlation_threshold: float = 0.95) -> pd.DataFrame:
+        correlation_threshold: float = 0.95) -> tuple[pd.DataFrame, list[str]]:
     """
     This function identifies the features that have high correlation with other features and removes them from the DataFrame.
     The logic for identifying features with high correlation is as follows:
@@ -152,7 +156,23 @@ def removing_features_with_high_correlation(
     logger.info(f"Identified {len(features_to_remove)} features to remove due to high correlation: {features_to_remove}")
     features_to_remove.remove(EXCEPTIONAL_COLS[0])
     logger.info(f"Removed exceptional columns from the list of features to remove: {type(EXCEPTIONAL_COLS)}")
+    with open("data/transformed/features_to_remove.json","w") as f:
+        json.dump(list(features_to_remove), f)
     return df.drop(columns=list(features_to_remove))
+
+def removing_features_with_high_correlation_with_config(dataframe) -> pd.DataFrame:
+    '''
+    Check if the config file exists and remove the highly correlated features from the dataframe.
+    This function has a dependency of the data transformation to be run with the training data atleast once.
+    '''
+    try:
+        if os.path.exists('data/transformed/features_to_remove.json'):
+            with open('data/transformed/features_to_remove.json', "r") as f:
+                features_to_remove = json.load(f)
+            uncorrelated_df = dataframe.drop(columns=features_to_remove)
+            return uncorrelated_df
+    except FileNotFoundError:
+        print("The config file to remove highly correlated features not found.")
 
 def transform_data() -> pd.DataFrame:
     """
@@ -175,6 +195,7 @@ def transform_data() -> pd.DataFrame:
     parser.add_argument("--correlation-threshold", type=float, default=0.95, help="Threshold for identifying highly correlated features")
     args = parser.parse_args()
     logger.info("Starting data transformation...")
+    #logger.info(f"{args}")
 
     # Step 0: Load the data to a dataframe
     df = pd.read_csv(args.input_file)
@@ -185,18 +206,26 @@ def transform_data() -> pd.DataFrame:
     logger.info(f"Dataframe shape after removing high noise features: {denoised_df.shape}")
 
     # Step 2: Remove features with high correlation
-    uncorrelated_df = removing_features_with_high_correlation(denoised_df, correlation_threshold=0.95)
+    if args.dataframe_name == 'train':
+        uncorrelated_df = removing_features_with_high_correlation(denoised_df, 
+                                                              correlation_threshold=0.95)
+    elif args.dataframe_name == 'test':
+        if os.path.exists('data/transformed/features_to_remove.json'):
+            uncorrelated_df = removing_features_with_high_correlation_with_config(denoised_df)
+
+    else:
+        raise ValidationError(f"{args.dataframe_name} is not supported, Should be one of train / test...")
     logger.info(f"Dataframe shape after removing highly correlated features: {uncorrelated_df.shape}")
 
     # Step 3: Perform feature engineering to create new features that may be useful for modeling.
     engineered_df = create_new_features(uncorrelated_df)
 
     # Step 4: Create X and y datasets for modeling. This dataset has 4 target variables (y1, y2, y3, y4) and the rest of the features are used as input features (X).
-    if args.dataframe_name == 'train':
-        engineered_df['prob_12h'] = np.where((engineered_df['time_to_hit_hours'] <= 12) & (engineered_df['event'] == 1), 1, 0)
-        engineered_df['prob_24h'] = np.where((engineered_df['time_to_hit_hours'] <= 12) & (engineered_df['event'] == 1), 1, 0)
-        engineered_df['prob_48h'] = np.where((engineered_df['time_to_hit_hours'] <= 12) & (engineered_df['event'] == 1), 1, 0)
-        engineered_df['prob_72h'] = np.where((engineered_df['time_to_hit_hours'] <= 12) & (engineered_df['event'] == 1), 1, 0)
+    # if args.dataframe_name == 'train':
+    #     engineered_df['prob_12h'] = np.where((engineered_df['time_to_hit_hours'] <= 12) & (engineered_df['event'] == 1), 1, 0)
+    #     engineered_df['prob_24h'] = np.where((engineered_df['time_to_hit_hours'] <= 12) & (engineered_df['event'] == 1), 1, 0)
+    #     engineered_df['prob_48h'] = np.where((engineered_df['time_to_hit_hours'] <= 12) & (engineered_df['event'] == 1), 1, 0)
+    #     engineered_df['prob_72h'] = np.where((engineered_df['time_to_hit_hours'] <= 12) & (engineered_df['event'] == 1), 1, 0)
     logger.info("Completed data transformation.")
     logger.info(f"Final dataframe shape after transformation: {engineered_df.shape}")
     logger.info(f"column names after transformation: {engineered_df.columns.tolist()}")

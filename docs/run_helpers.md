@@ -1,0 +1,2 @@
+The following is an example of how to run the data transformation logic:
+`uv run /Users/lakshminarayanan/Desktop/ML_E2E/kaggle_competitions/wids-global-datathon-2026/src/tasks/data_transformation.py --input-file /Users/lakshminarayanan/Desktop/ML_E2E/kaggle_competitions/wids-global-datathon-2026/data/raw/train.csv --dataframe-name train --correlation-threshold 0.95`
